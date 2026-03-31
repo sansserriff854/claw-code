@@ -299,7 +299,15 @@ fn run_resume_command(
                 message: Some(result.message),
             })
         }
-        SlashCommand::Clear => {
+        SlashCommand::Clear { confirm } => {
+            if !confirm {
+                return Ok(ResumeCommandOutcome {
+                    session: session.clone(),
+                    message: Some(
+                        "clear: confirmation required; rerun with /clear --confirm".to_string(),
+                    ),
+                });
+            }
             let cleared = Session::new();
             cleared.save_to_path(session_path)?;
             Ok(ResumeCommandOutcome {
@@ -448,7 +456,7 @@ impl LiveCli {
             SlashCommand::Compact => self.compact()?,
             SlashCommand::Model { model } => self.set_model(model)?,
             SlashCommand::Permissions { mode } => self.set_permissions(mode)?,
-            SlashCommand::Clear => self.clear_session()?,
+            SlashCommand::Clear { confirm } => self.clear_session(confirm)?,
             SlashCommand::Cost => self.print_cost(),
             SlashCommand::Resume { session_path } => self.resume_session(session_path)?,
             SlashCommand::Config => Self::print_config()?,
@@ -526,7 +534,14 @@ impl LiveCli {
         Ok(())
     }
 
-    fn clear_session(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn clear_session(&mut self, confirm: bool) -> Result<(), Box<dyn std::error::Error>> {
+        if !confirm {
+            println!(
+                "clear: confirmation required; run /clear --confirm to start a fresh session."
+            );
+            return Ok(());
+        }
+
         self.runtime = build_runtime_with_permission_mode(
             Session::new(),
             self.model.clone(),
@@ -1274,7 +1289,7 @@ mod tests {
         assert!(help.contains("/status"));
         assert!(help.contains("/model [model]"));
         assert!(help.contains("/permissions [read-only|workspace-write|danger-full-access]"));
-        assert!(help.contains("/clear"));
+        assert!(help.contains("/clear [--confirm]"));
         assert!(help.contains("/cost"));
         assert!(help.contains("/resume <session-path>"));
         assert!(help.contains("/config"));
@@ -1368,12 +1383,28 @@ mod tests {
     }
 
     #[test]
+    fn clear_command_requires_explicit_confirmation_flag() {
+        assert_eq!(
+            SlashCommand::parse("/clear"),
+            Some(SlashCommand::Clear { confirm: false })
+        );
+        assert_eq!(
+            SlashCommand::parse("/clear --confirm"),
+            Some(SlashCommand::Clear { confirm: true })
+        );
+    }
+
+    #[test]
     fn parses_resume_and_config_slash_commands() {
         assert_eq!(
             SlashCommand::parse("/resume saved-session.json"),
             Some(SlashCommand::Resume {
                 session_path: Some("saved-session.json".to_string())
             })
+        );
+        assert_eq!(
+            SlashCommand::parse("/clear --confirm"),
+            Some(SlashCommand::Clear { confirm: true })
         );
         assert_eq!(SlashCommand::parse("/config"), Some(SlashCommand::Config));
         assert_eq!(SlashCommand::parse("/memory"), Some(SlashCommand::Memory));

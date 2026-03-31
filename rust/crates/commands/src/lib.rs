@@ -72,7 +72,7 @@ const SLASH_COMMAND_SPECS: &[SlashCommandSpec] = &[
     SlashCommandSpec {
         name: "clear",
         summary: "Start a fresh local session",
-        argument_hint: None,
+        argument_hint: Some("[--confirm]"),
         resume_supported: true,
     },
     SlashCommandSpec {
@@ -114,7 +114,7 @@ pub enum SlashCommand {
     Compact,
     Model { model: Option<String> },
     Permissions { mode: Option<String> },
-    Clear,
+    Clear { confirm: bool },
     Cost,
     Resume { session_path: Option<String> },
     Config,
@@ -143,7 +143,9 @@ impl SlashCommand {
             "permissions" => Self::Permissions {
                 mode: parts.next().map(ToOwned::to_owned),
             },
-            "clear" => Self::Clear,
+            "clear" => Self::Clear {
+                confirm: parts.next() == Some("--confirm"),
+            },
             "cost" => Self::Cost,
             "resume" => Self::Resume {
                 session_path: parts.next().map(ToOwned::to_owned),
@@ -225,7 +227,7 @@ pub fn handle_slash_command(
         SlashCommand::Status
         | SlashCommand::Model { .. }
         | SlashCommand::Permissions { .. }
-        | SlashCommand::Clear
+        | SlashCommand::Clear { .. }
         | SlashCommand::Cost
         | SlashCommand::Resume { .. }
         | SlashCommand::Config
@@ -263,7 +265,14 @@ mod tests {
                 mode: Some("read-only".to_string()),
             })
         );
-        assert_eq!(SlashCommand::parse("/clear"), Some(SlashCommand::Clear));
+        assert_eq!(
+            SlashCommand::parse("/clear"),
+            Some(SlashCommand::Clear { confirm: false })
+        );
+        assert_eq!(
+            SlashCommand::parse("/clear --confirm"),
+            Some(SlashCommand::Clear { confirm: true })
+        );
         assert_eq!(SlashCommand::parse("/cost"), Some(SlashCommand::Cost));
         assert_eq!(
             SlashCommand::parse("/resume session.json"),
@@ -285,7 +294,7 @@ mod tests {
         assert!(help.contains("/compact"));
         assert!(help.contains("/model [model]"));
         assert!(help.contains("/permissions [read-only|workspace-write|danger-full-access]"));
-        assert!(help.contains("/clear"));
+        assert!(help.contains("/clear [--confirm]"));
         assert!(help.contains("/cost"));
         assert!(help.contains("/resume <session-path>"));
         assert!(help.contains("/config"));
@@ -349,6 +358,10 @@ mod tests {
         )
         .is_none());
         assert!(handle_slash_command("/clear", &session, CompactionConfig::default()).is_none());
+        assert!(
+            handle_slash_command("/clear --confirm", &session, CompactionConfig::default())
+                .is_none()
+        );
         assert!(handle_slash_command("/cost", &session, CompactionConfig::default()).is_none());
         assert!(handle_slash_command(
             "/resume session.json",
